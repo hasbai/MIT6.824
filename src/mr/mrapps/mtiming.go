@@ -1,4 +1,4 @@
-package main
+package mrapps
 
 //
 // a MapReduce pseudo-application to test that workers
@@ -7,16 +7,20 @@ package main
 // go build -buildmode=plugin mtiming.go
 //
 
-import "6.824/mr"
-import "strings"
+import (
+	"6.824/models"
+	"strings"
+)
 import "fmt"
 import "os"
-import "syscall"
 import "time"
 import "sort"
 import "io/ioutil"
 
-func nparallel(phase string) int {
+type MTiming struct {
+}
+
+func mparallel(phase string) int {
 	// create a file so that other workers will see that
 	// we're running at the same time as them.
 	pid := os.Getpid()
@@ -42,7 +46,7 @@ func nparallel(phase string) int {
 		pat := fmt.Sprintf("mr-worker-%s-%%d", phase)
 		n, err := fmt.Sscanf(name, pat, &xpid)
 		if n == 1 && err == nil {
-			err := syscall.Kill(xpid, 0)
+			//err := syscall.Kill(xpid, 0)
 			if err == nil {
 				// if err == nil, xpid is alive.
 				ret += 1
@@ -61,25 +65,25 @@ func nparallel(phase string) int {
 	return ret
 }
 
-func Map(filename string, contents string) []mr.KeyValue {
+func (MTiming) Map(filename string, contents string) []models.KeyValue {
 	t0 := time.Now()
 	ts := float64(t0.Unix()) + (float64(t0.Nanosecond()) / 1000000000.0)
 	pid := os.Getpid()
 
-	n := nparallel("map")
+	n := mparallel("map")
 
-	kva := []mr.KeyValue{}
-	kva = append(kva, mr.KeyValue{
-		fmt.Sprintf("times-%v", pid),
-		fmt.Sprintf("%.1f", ts)})
-	kva = append(kva, mr.KeyValue{
-		fmt.Sprintf("parallel-%v", pid),
-		fmt.Sprintf("%d", n)})
+	var kva []models.KeyValue
+	kva = append(kva, models.KeyValue{
+		Key:   fmt.Sprintf("times-%v", pid),
+		Value: fmt.Sprintf("%.1f", ts)})
+	kva = append(kva, models.KeyValue{
+		Key:   fmt.Sprintf("parallel-%v", pid),
+		Value: fmt.Sprintf("%d", n)})
 	return kva
 }
 
-func Reduce(key string, values []string) string {
-	//n := nparallel("reduce")
+func (MTiming) Reduce(key string, values []string) string {
+	//n := mparallel("reduce")
 
 	// sort values to ensure deterministic output.
 	vv := make([]string, len(values))

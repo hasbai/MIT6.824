@@ -1,91 +1,181 @@
 package mr
 
-import "fmt"
-import "log"
-import "net/rpc"
+import (
+	"6.824/models"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"github.com/google/uuid"
+	"log"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+)
 import "hash/fnv"
 
-
-//
-// Map functions return a slice of KeyValue.
-//
-type KeyValue struct {
-	Key   string
-	Value string
-}
-
-//
-// use ihash(key) % NReduce to choose the reduce
-// task number for each KeyValue emitted by Map.
-//
-func ihash(key string) int {
+// use iHash(key) % NReduce to choose reduce task number for each KeyValue emitted by Map.
+func iHash(key string) int {
 	h := fnv.New32a()
-	h.Write([]byte(key))
+	_, _ = h.Write([]byte(key))
 	return int(h.Sum32() & 0x7fffffff)
 }
 
-
-//
-// main/mrworker.go calls this function.
-//
-func Worker(mapf func(string, string) []KeyValue,
-	reducef func(string, []string) string) {
+// Worker is called by main.go worker
+func Worker(mrAppName string) {
+	mrApp := CreateMapReduceApp(mrAppName)
 
 	// Your worker implementation here.
 
-	// uncomment to send the Example RPC to the coordinator.
-	// CallExample()
+	uid := uuid.NewString()
+	log.Printf("worker %s spawn, app %s", uid, mrAppName)
+	defer log.Printf("worker %s exit", uid)
 
+	task := getTask(uid)
+	for task != emptyTask {
+		err := runTask(task, mrApp)
+		if err != nil {
+			log.Printf("worker run failed, %v", err)
+		}
+		task = getTask(uid)
+	}
+	log.Printf("all done")
 }
 
-//
-// example function to show how to make an RPC call to the coordinator.
-//
-// the RPC argument and reply types are defined in rpc.go.
-//
-func CallExample() {
+func getTask(workerID string) Task {
+	task := Task{}
+	args := GetTaskArgs{WorkerID: workerID}
+	ok := call("Coordinator.GetTask", &args, &task)
+	if !ok {
+		log.Println("get task failed")
+	}
+	log.Println("get task ", task)
+	return task
+}
 
-	// declare an argument structure.
-	args := ExampleArgs{}
-
-	// fill in the argument(s).
-	args.X = 99
-
-	// declare a reply structure.
-	reply := ExampleReply{}
-
-	// send the RPC request, wait for the reply.
-	// the "Coordinator.Example" tells the
-	// receiving server that we'd like to call
-	// the Example() method of struct Coordinator.
-	ok := call("Coordinator.Example", &args, &reply)
-	if ok {
-		// reply.Y should be 100.
-		fmt.Printf("reply.Y %v\n", reply.Y)
-	} else {
-		fmt.Printf("call failed!\n")
+func runTask(task Task, app MapReduce) error {
+	log.Println("run task ", task)
+	switch task.Type {
+	case TaskTypeMap:
+		return runMap(task, app.Map)
+	case TaskTypeReduce:
+		return runReduce(task, app.Reduce)
+	default:
+		panic("unknown task type")
 	}
 }
 
-//
-// send an RPC request to the coordinator, wait for the response.
-// usually returns true.
-// returns false if something goes wrong.
-//
-func call(rpcname string, args interface{}, reply interface{}) bool {
-	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
-	sockname := coordinatorSock()
-	c, err := rpc.DialHTTP("unix", sockname)
+func runMap(task Task, mapFunc MapFunc) error {
+	content, err := os.ReadFile(task.FilePath)
 	if err != nil {
-		log.Fatal("dialing:", err)
-	}
-	defer c.Close()
-
-	err = c.Call(rpcname, args, reply)
-	if err == nil {
-		return true
+		return err
 	}
 
-	fmt.Println(err)
-	return false
+	kvs := mapFunc("", string(content))
+	tmpFiles := make([]tmpFileStruct, task.NReduce)
+
+	for i := 0; i < task.NReduce; i++ {
+		tmpFile := bytes.NewBuffer([]byte{})
+		tmpFiles[i].filename = fmt.Sprintf("mr-%d-%d", task.ID, i)
+		tmpFiles[i].buffer = tmpFile
+		tmpFiles[i].encoder = json.NewEncoder(tmpFile)
+	}
+
+	for _, kv := range kvs {
+		index := iHash(kv.Key) % task.NReduce
+		err = tmpFiles[index].encoder.Encode(&kv)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, tmpFile := range tmpFiles {
+		err = os.WriteFile(tmpFile.filename, tmpFile.buffer.Bytes(), 0644)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runReduce(task Task, reduceFunc ReduceFunc) error {
+	kvs := make([]models.KeyValue, 0, 1000)
+	files, err := filepath.Glob("mr-*")
+	if err != nil {
+		panic(err)
+	}
+	for _, filename := range files {
+		if !isIntermediateFile(filename, task.ID) {
+			continue
+		}
+
+		var file *os.File
+		file, err = os.Open(filename)
+		if err != nil {
+			return err
+		}
+
+		dec := json.NewDecoder(file)
+		for {
+			var kv models.KeyValue
+			err = dec.Decode(&kv)
+			if err != nil {
+				break
+			}
+			kvs = append(kvs, kv)
+		}
+		_ = file.Close()
+
+		err = os.Remove(filename)
+		if err != nil {
+			return err
+		}
+	}
+
+	sort.Sort(ByKey(kvs))
+
+	buffer := bytes.NewBuffer([]byte{})
+	i := 0
+	for i < len(kvs) {
+		j := i + 1
+		for j < len(kvs) && kvs[j].Key == kvs[i].Key {
+			j++
+		}
+		var values []string
+		for k := i; k < j; k++ {
+			values = append(values, kvs[k].Value)
+		}
+		output := reduceFunc(kvs[i].Key, values)
+		buffer.WriteString(fmt.Sprintf("%v %v\n", kvs[i].Key, output))
+		i = j
+	}
+
+	return os.WriteFile(
+		"mr-out-"+strconv.Itoa(task.ID+1), // id starts from 0
+		buffer.Bytes(),
+		0644,
+	)
+}
+
+type tmpFileStruct struct {
+	filename string
+	buffer   *bytes.Buffer
+	encoder  *json.Encoder
+}
+
+var re = regexp.MustCompile(`mr-(\d+)-(\d+)`)
+
+func isIntermediateFile(filename string, reduceID int) bool {
+	result := re.FindStringSubmatch(filename)
+	if len(result) < 3 {
+		return false
+	}
+
+	id, err := strconv.Atoi(result[2])
+	if err != nil {
+		return false
+	}
+
+	return id == reduceID
 }

@@ -6,31 +6,68 @@ package mr
 // remember to capitalize all names.
 //
 
-import "os"
-import "strconv"
-
-//
-// example to show how to declare the arguments
-// and reply for an RPC.
-//
-
-type ExampleArgs struct {
-	X int
-}
-
-type ExampleReply struct {
-	Y int
-}
+import (
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
+)
 
 // Add your RPC definitions here.
 
+type GetTaskArgs struct {
+	WorkerID string
+}
 
-// Cook up a unique-ish UNIX-domain socket name
-// in /var/tmp, for the coordinator.
-// Can't use the current directory since
-// Athena AFS doesn't support UNIX-domain sockets.
+// Cook up a unique-ish UNIX-domain socket name for the coordinator.
+// Can use the current directory since Windows support UNIX-domain sockets.
 func coordinatorSock() string {
-	s := "/var/tmp/824-mr-"
-	s += strconv.Itoa(os.Getuid())
-	return s
+	return "824.sock"
+}
+
+// start a thread that listens for RPCs from worker.go
+func (c *Coordinator) server() {
+	err := rpc.Register(c)
+	if err != nil {
+		panic(err)
+	}
+
+	rpc.HandleHTTP()
+
+	socketName := coordinatorSock()
+	_ = os.Remove(socketName)
+	l, e := net.Listen("unix", socketName)
+	if e != nil {
+		log.Fatal("listen error:", e)
+	}
+	log.Printf("listening on unix://%s", socketName)
+
+	go func() {
+		err = http.Serve(l, nil)
+		if err != nil {
+			panic(err)
+		}
+	}()
+}
+
+// send an RPC request to the coordinator, wait for the response.
+// usually returns true.
+// returns false if something goes wrong.
+func call(rpcName string, args any, reply any) bool {
+	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
+	socketName := coordinatorSock()
+	c, err := rpc.DialHTTP("unix", socketName)
+	if err != nil {
+		log.Fatal("dialing:", err)
+	}
+	//goland:noinspection GoUnhandledErrorResult
+	defer c.Close()
+
+	err = c.Call(rpcName, args, reply)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return err == nil
 }

@@ -1,70 +1,108 @@
 package mr
 
-import "log"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
-
+import (
+	"log"
+	"sync"
+	"sync/atomic"
+	"time"
+)
 
 type Coordinator struct {
-	// Your definitions here.
-
+	tasks            []Task      // all tasks
+	taskQueue        Stack[Task] // not assigned tasks
+	workerTaskMap    sync.Map    // assigned tasks
+	canReduce        *sync.Cond
+	totalMapTasks    int32
+	finishedMapTasks int32
 }
 
 // Your code here -- RPC handlers for the worker to call.
 
-//
-// an example RPC handler.
-//
-// the RPC argument and reply types are defined in rpc.go.
-//
-func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
-	reply.Y = args.X + 1
+const timeout = time.Second * 10
+
+// GetTask gives task to workers.
+func (c *Coordinator) GetTask(args *GetTaskArgs, reply *Task) error {
+	// finished task
+	taskID, ok := c.workerTaskMap.Load(args.WorkerID)
+	if ok {
+		if c.tasks[taskID.(int)].Type == TaskTypeMap {
+			atomic.AddInt32(&c.finishedMapTasks, 1)
+		}
+	}
+	c.workerTaskMap.Delete(args.WorkerID)
+
+	// get a task
+	task := c.taskQueue.Pop()
+	for task == emptyTask { // no tasks available, sleep
+		if c.Done() {
+			return nil
+		}
+		time.Sleep(time.Second)
+		task = c.taskQueue.Pop()
+	}
+
+	*reply = task
+
+	if reply.Type == TaskTypeReduce {
+		c.canReduce.L.Lock()
+		for !c.allMapTasksDone() {
+			log.Printf("task %d is waiting", task.ID)
+			c.canReduce.Wait()
+		}
+		c.canReduce.L.Unlock()
+		c.canReduce.Broadcast()
+	}
+
+	c.workerTaskMap.Store(args.WorkerID, task.ID)
+	time.AfterFunc(timeout, func() {
+		c.timeout(args.WorkerID, task.ID)
+	})
+
 	return nil
 }
 
-
-//
-// start a thread that listens for RPCs from worker.go
-//
-func (c *Coordinator) server() {
-	rpc.Register(c)
-	rpc.HandleHTTP()
-	//l, e := net.Listen("tcp", ":1234")
-	sockname := coordinatorSock()
-	os.Remove(sockname)
-	l, e := net.Listen("unix", sockname)
-	if e != nil {
-		log.Fatal("listen error:", e)
-	}
-	go http.Serve(l, nil)
-}
-
-//
-// main/mrcoordinator.go calls Done() periodically to find out
-// if the entire job has finished.
-//
+// Done is called periodically to find out if the entire job has finished.
 func (c *Coordinator) Done() bool {
-	ret := false
-
-	// Your code here.
-
-
-	return ret
+	var workerTaskMappingLength int
+	c.workerTaskMap.Range(func(k, v any) bool {
+		workerTaskMappingLength++
+		return true
+	})
+	return c.taskQueue.Len() == 0 && workerTaskMappingLength == 0
 }
 
-//
-// create a Coordinator.
-// main/mrcoordinator.go calls this function.
+func (c *Coordinator) timeout(workerID string, taskID int) {
+	currentTaskID, ok := c.workerTaskMap.Load(workerID)
+	if !ok || currentTaskID != taskID { // task finished
+		log.Printf("task %d finished, skip...", taskID)
+		return
+	}
+	c.workerTaskMap.Delete(workerID)
+	c.taskQueue.Push(c.tasks[taskID])
+	log.Printf("task %d timeout, rescheduled", taskID)
+}
+
+func (c *Coordinator) allMapTasksDone() bool {
+	return c.totalMapTasks == atomic.LoadInt32(&c.finishedMapTasks)
+}
+
+// MakeCoordinator creates a Coordinator.
+// main.go coordinator calls this function.
 // nReduce is the number of reduce tasks to use.
-//
-func MakeCoordinator(files []string, nReduce int) *Coordinator {
+func MakeCoordinator(nReduce int) *Coordinator {
 	c := Coordinator{}
 
 	// Your code here.
-
+	c.canReduce = sync.NewCond(&sync.Mutex{})
+	c.tasks = generateTasks(nReduce)
+	for _, task := range c.tasks {
+		c.taskQueue.Push(task)
+		if task.Type == TaskTypeMap {
+			c.totalMapTasks++
+		}
+	}
 
 	c.server()
+
 	return &c
 }

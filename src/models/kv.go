@@ -4,6 +4,12 @@ import "6.824/porcupine"
 import "fmt"
 import "sort"
 
+// KeyValue is returned by the Map function.
+type KeyValue struct {
+	Key   string
+	Value string
+}
+
 type KvInput struct {
 	Op    uint8 // 0 => get, 1 => put, 2 => append
 	Key   string

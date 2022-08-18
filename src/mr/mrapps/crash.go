@@ -1,21 +1,26 @@
-package main
+package mrapps
 
 //
 // a MapReduce pseudo-application that sometimes crashes,
 // and sometimes takes a long time,
-// to test MapReduce's ability to recover.
+// to test MapReduces ability to recover.
 //
 // go build -buildmode=plugin crash.go
 //
 
-import "6.824/mr"
-import crand "crypto/rand"
+import (
+	"6.824/models"
+	crand "crypto/rand"
+)
 import "math/big"
 import "strings"
 import "os"
 import "sort"
 import "strconv"
 import "time"
+
+type Crash struct {
+}
 
 func maybeCrash() {
 	max := big.NewInt(1000)
@@ -31,18 +36,18 @@ func maybeCrash() {
 	}
 }
 
-func Map(filename string, contents string) []mr.KeyValue {
+func (Crash) Map(filename string, contents string) []models.KeyValue {
 	maybeCrash()
 
-	kva := []mr.KeyValue{}
-	kva = append(kva, mr.KeyValue{"a", filename})
-	kva = append(kva, mr.KeyValue{"b", strconv.Itoa(len(filename))})
-	kva = append(kva, mr.KeyValue{"c", strconv.Itoa(len(contents))})
-	kva = append(kva, mr.KeyValue{"d", "xyzzy"})
+	var kva []models.KeyValue
+	kva = append(kva, models.KeyValue{Key: "a", Value: filename})
+	kva = append(kva, models.KeyValue{Key: "b", Value: strconv.Itoa(len(filename))})
+	kva = append(kva, models.KeyValue{Key: "c", Value: strconv.Itoa(len(contents))})
+	kva = append(kva, models.KeyValue{Key: "d", Value: "xyzzy"})
 	return kva
 }
 
-func Reduce(key string, values []string) string {
+func (Crash) Reduce(key string, values []string) string {
 	maybeCrash()
 
 	// sort values to ensure deterministic output.

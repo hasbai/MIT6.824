@@ -1,4 +1,4 @@
-package main
+package mrapps
 
 //
 // a MapReduce pseudo-application to test that workers
@@ -7,10 +7,11 @@ package main
 // go build -buildmode=plugin rtiming.go
 //
 
-import "6.824/mr"
+import (
+	"6.824/models"
+)
 import "fmt"
 import "os"
-import "syscall"
 import "time"
 import "io/ioutil"
 
@@ -40,7 +41,7 @@ func nparallel(phase string) int {
 		pat := fmt.Sprintf("mr-worker-%s-%%d", phase)
 		n, err := fmt.Sscanf(name, pat, &xpid)
 		if n == 1 && err == nil {
-			err := syscall.Kill(xpid, 0)
+			//err := syscall.Kill(xpid, 0)
 			if err == nil {
 				// if err == nil, xpid is alive.
 				ret += 1
@@ -59,23 +60,25 @@ func nparallel(phase string) int {
 	return ret
 }
 
-func Map(filename string, contents string) []mr.KeyValue {
+type RTiming struct {
+}
 
-	kva := []mr.KeyValue{}
-	kva = append(kva, mr.KeyValue{"a", "1"})
-	kva = append(kva, mr.KeyValue{"b", "1"})
-	kva = append(kva, mr.KeyValue{"c", "1"})
-	kva = append(kva, mr.KeyValue{"d", "1"})
-	kva = append(kva, mr.KeyValue{"e", "1"})
-	kva = append(kva, mr.KeyValue{"f", "1"})
-	kva = append(kva, mr.KeyValue{"g", "1"})
-	kva = append(kva, mr.KeyValue{"h", "1"})
-	kva = append(kva, mr.KeyValue{"i", "1"})
-	kva = append(kva, mr.KeyValue{"j", "1"})
+func (RTiming) Map(filename string, contents string) []models.KeyValue {
+	var kva []models.KeyValue
+	kva = append(kva, models.KeyValue{Key: "a", Value: "1"})
+	kva = append(kva, models.KeyValue{Key: "b", Value: "1"})
+	kva = append(kva, models.KeyValue{Key: "c", Value: "1"})
+	kva = append(kva, models.KeyValue{Key: "d", Value: "1"})
+	kva = append(kva, models.KeyValue{Key: "e", Value: "1"})
+	kva = append(kva, models.KeyValue{Key: "f", Value: "1"})
+	kva = append(kva, models.KeyValue{Key: "g", Value: "1"})
+	kva = append(kva, models.KeyValue{Key: "h", Value: "1"})
+	kva = append(kva, models.KeyValue{Key: "i", Value: "1"})
+	kva = append(kva, models.KeyValue{Key: "j", Value: "1"})
 	return kva
 }
 
-func Reduce(key string, values []string) string {
+func (RTiming) Reduce(key string, values []string) string {
 	n := nparallel("reduce")
 
 	val := fmt.Sprintf("%d", n)
