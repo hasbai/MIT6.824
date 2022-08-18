@@ -21,12 +21,11 @@ func (a ByKey) Len() int           { return len(a) }
 func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
-var wc = CreateMapReduceApp("wc")
-
-func Sequential() {
+func Sequential(mrAppName string) {
 	// read each input file,
 	// pass it to Map,
 	// accumulate the intermediate Map output.
+	mrApp := CreateMapReduceApp(mrAppName)
 
 	var intermediate []models.KeyValue
 
@@ -40,7 +39,7 @@ func Sequential() {
 			log.Fatalf("cannot read %s, %v", file.Name(), err)
 		}
 
-		kva := wc.Map(file.Name(), string(content))
+		kva := mrApp.Map(file.Name(), string(content))
 		intermediate = append(intermediate, kva...)
 
 		return nil
@@ -74,7 +73,7 @@ func Sequential() {
 		for k := i; k < j; k++ {
 			values = append(values, intermediate[k].Value)
 		}
-		output := wc.Reduce(intermediate[i].Key, values)
+		output := mrApp.Reduce(intermediate[i].Key, values)
 
 		// this is the correct format for each line of Reduce output.
 		_, _ = fmt.Fprintf(outputFile, "%v %v\n", intermediate[i].Key, output)

@@ -17,16 +17,23 @@ import (
 
 const expectedFileName = "mr-out-0"
 
-func init() {
-	// generate the correct output
-	Sequential()
-}
-
 func Md5(data []byte) string {
 	return fmt.Sprintf("%x", md5.Sum(data))
 }
 
 func TestWordCount(t *testing.T) {
+	test(t, "wc")
+}
+
+func TestIndexer(t *testing.T) {
+	test(t, "indexer")
+}
+
+func test(t *testing.T, mrApp string) {
+	baseTest(t, mrApp, true)
+}
+
+func baseTest(t *testing.T, mrApp string, clear bool) {
 	MakeCoordinator(10)
 	time.Sleep(time.Second) // give the coordinator time to create the sockets.
 
@@ -34,7 +41,7 @@ func TestWordCount(t *testing.T) {
 	for i := 0; i < 3; i++ { // start multiple workers.
 		wg.Add(1)
 		go func() {
-			Worker("wc")
+			Worker(mrApp)
 			wg.Done()
 		}()
 	}
@@ -47,7 +54,7 @@ func TestWordCount(t *testing.T) {
 			file, _ := os.Open(path)
 			fileScanner := bufio.NewScanner(file)
 			for fileScanner.Scan() {
-				slice := strings.Split(fileScanner.Text(), " ")
+				slice := strings.SplitN(fileScanner.Text(), " ", 2)
 				kvs = append(kvs, models.KeyValue{
 					Key:   slice[0],
 					Value: slice[1],
@@ -63,19 +70,26 @@ func TestWordCount(t *testing.T) {
 	for _, kv := range kvs {
 		buffer.WriteString(fmt.Sprintf("%s %s\n", kv.Key, kv.Value))
 	}
-	expected, _ := os.ReadFile(expectedFileName)
-	if Md5(buffer.Bytes()) != Md5(expected) {
-		t.Error("files aren't equivalent")
-	}
 
-	// remove files
-	files, err := filepath.Glob("mr-*")
+	Sequential(mrApp)
+	expectedData, err := os.ReadFile(expectedFileName)
 	if err != nil {
 		panic(err)
 	}
-	for _, f := range files {
-		if err = os.Remove(f); err != nil {
+
+	if Md5(buffer.Bytes()) != Md5(expectedData) {
+		t.Error("files aren't equivalent")
+	}
+
+	if clear { // remove files
+		files, err := filepath.Glob("mr-*")
+		if err != nil {
 			panic(err)
+		}
+		for _, f := range files {
+			if err = os.Remove(f); err != nil {
+				panic(err)
+			}
 		}
 	}
 }

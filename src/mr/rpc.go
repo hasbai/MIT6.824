@@ -28,28 +28,27 @@ func coordinatorSock() string {
 }
 
 // start a thread that listens for RPCs from worker.go
-func (c *Coordinator) server() {
-	err := rpc.Register(c)
-	if err != nil {
-		panic(err)
-	}
-
-	rpc.HandleHTTP()
-
+func (c *Coordinator) serve() {
 	socketName := coordinatorSock()
 	_ = os.Remove(socketName)
-	l, e := net.Listen("unix", socketName)
+	listener, e := net.Listen("unix", socketName)
 	if e != nil {
 		log.Fatal("listen error:", e)
 	}
 	log.Printf("listening on unix://%s", socketName)
 
-	go func() {
-		err = http.Serve(l, nil)
-		if err != nil {
-			panic(err)
-		}
-	}()
+	rpcServer := &rpc.Server{}
+	err := rpcServer.Register(c)
+	if err != nil {
+		panic(err)
+	}
+
+	server := http.Server{Handler: rpcServer}
+	c.server = &server
+	err = server.Serve(listener)
+	if err != nil {
+		log.Println(err)
+	}
 }
 
 // send an RPC request to the coordinator, wait for the response.

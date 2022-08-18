@@ -13,7 +13,7 @@ func main() {
 	}
 	switch os.Args[1] {
 	case "sequential":
-		mr.Sequential()
+		mr.Sequential("wc")
 	case "coordinator":
 		m := mr.MakeCoordinator(10)
 		for m.Done() == false {

@@ -8,10 +8,12 @@ import (
 	"github.com/google/uuid"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 )
 import "hash/fnv"
 
@@ -71,8 +73,10 @@ func runMap(task Task, mapFunc MapFunc) error {
 	if err != nil {
 		return err
 	}
-
-	kvs := mapFunc("", string(content))
+	kvs := mapFunc(
+		path.Base(strings.Replace(task.FilePath, "\\", "/", -1)),
+		string(content),
+	)
 	tmpFiles := make([]tmpFileStruct, task.NReduce)
 
 	for i := 0; i < task.NReduce; i++ {

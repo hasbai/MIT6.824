@@ -28,7 +28,7 @@ func (Indexer) Map(document string, value string) (res []models.KeyValue) {
 		m[w] = true
 	}
 	for w := range m {
-		kv := models.KeyValue{w, document}
+		kv := models.KeyValue{Key: w, Value: document}
 		res = append(res, kv)
 	}
 	return

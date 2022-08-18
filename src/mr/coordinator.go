@@ -2,12 +2,14 @@ package mr
 
 import (
 	"log"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
 type Coordinator struct {
+	server           *http.Server
 	tasks            []Task      // all tasks
 	taskQueue        Stack[Task] // not assigned tasks
 	workerTaskMap    sync.Map    // assigned tasks
@@ -68,7 +70,14 @@ func (c *Coordinator) Done() bool {
 		workerTaskMappingLength++
 		return true
 	})
-	return c.taskQueue.Len() == 0 && workerTaskMappingLength == 0
+	done := c.taskQueue.Len() == 0 && workerTaskMappingLength == 0
+	if done {
+		err := c.server.Close()
+		if err != nil {
+			panic(err)
+		}
+	}
+	return done
 }
 
 func (c *Coordinator) timeout(workerID string, taskID int) {
@@ -102,7 +111,7 @@ func MakeCoordinator(nReduce int) *Coordinator {
 		}
 	}
 
-	c.server()
+	go c.serve()
 
 	return &c
 }
