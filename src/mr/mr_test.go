@@ -38,21 +38,21 @@ func TestMapParallelism(t *testing.T) {
 	buffer := collectOutput()
 	fmt.Println(buffer.String())
 
-	parallelCnt := 0
+	isParallel := false
 	timesCnt := 0
 	scanner := bufio.NewScanner(&buffer)
 	for scanner.Scan() {
-		slice := strings.Split(scanner.Text(), " ")
+		slice := strings.SplitN(scanner.Text(), " ", 2)
 		if strings.HasPrefix(slice[0], "parallel") &&
-			slice[1] == strconv.Itoa(workerNum) {
-			parallelCnt++
+			strings.Contains(slice[1], strconv.Itoa(workerNum)) {
+			isParallel = true
 		}
 		if strings.HasPrefix(slice[0], "time") {
 			timesCnt++
 		}
 	}
 	assert.Equalf(t, timesCnt, workerNum, "worker nums incorrect")
-	assert.Greaterf(t, parallelCnt, 0, "map workers did not run in parallel")
+	assert.Truef(t, isParallel, "map workers did not run in parallel")
 }
 
 func TestReduceParallelism(t *testing.T) {

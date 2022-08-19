@@ -11,10 +11,8 @@ import (
 
 type Coordinator struct {
 	server           *http.Server
-	tasks            []Task      // all tasks
 	taskQueue        Stack[Task] // not assigned tasks
 	workerTaskMap    sync.Map    // assigned tasks
-	canReduce        *sync.Cond
 	totalMapTasks    int32
 	finishedMapTasks int32
 }
@@ -26,11 +24,12 @@ const timeout = time.Second * 10
 // GetTask gives task to workers.
 func (c *Coordinator) GetTask(args *GetTaskArgs, reply *Task) error {
 	// finished task
-	taskID, ok := c.workerTaskMap.Load(args.WorkerID)
+	finishedTask, ok := c.loadTaskMap(args.WorkerID)
 	if ok {
-		if c.tasks[taskID.(int)].Type == TaskTypeMap {
+		if finishedTask.Type == TaskTypeMap {
 			atomic.AddInt32(&c.finishedMapTasks, 1)
 		}
+		finishedTask.timer.Stop()
 	}
 	c.workerTaskMap.Delete(args.WorkerID)
 
@@ -51,20 +50,13 @@ func (c *Coordinator) GetTask(args *GetTaskArgs, reply *Task) error {
 		c.taskQueue.Push(task)
 		log.Printf("task %d is waiting", task.ID)
 		return nil
-		//c.canReduce.L.Lock()
-		//for !c.allMapTasksDone() {
-		//	log.Printf("task %d is waiting", task.ID)
-		//	c.canReduce.Wait()
-		//}
-		//c.canReduce.L.Unlock()
-		//c.canReduce.Broadcast()
 	}
 
-	c.workerTaskMap.Store(args.WorkerID, task.ID)
-	time.AfterFunc(timeout, func() {
+	reply.Code = TaskCodeSuccess
+	c.workerTaskMap.Store(args.WorkerID, &task)
+	task.timer = time.AfterFunc(timeout, func() {
 		c.timeout(args.WorkerID, task.ID)
 	})
-
 	return nil
 }
 
@@ -86,23 +78,19 @@ func (c *Coordinator) Done() bool {
 }
 
 func (c *Coordinator) timeout(workerID string, taskID int) {
-	currentTaskID, ok := c.workerTaskMap.Load(workerID)
-	if !ok || currentTaskID != taskID { // task finished
+	currentTask, ok := c.loadTaskMap(workerID)
+	if !ok || currentTask.ID != taskID { // task finished
 		//log.Printf("task %d finished, skip...", taskID)
 		return
 	}
 	c.workerTaskMap.Delete(workerID)
-	c.taskQueue.Push(c.tasks[taskID])
+	c.taskQueue.Push(*currentTask)
 	log.Printf("task %d timeout, rescheduled", taskID)
 	fmt.Println(c.taskQueue.array)
-	c.workerTaskMap.Range(func(k, v any) bool {
-		fmt.Println(k, v)
-		return true
-	})
 }
 
 func (c *Coordinator) allMapTasksDone() bool {
-	log.Println(atomic.LoadInt32(&c.finishedMapTasks))
+	log.Println("map task finished num:", atomic.LoadInt32(&c.finishedMapTasks))
 	return c.totalMapTasks == atomic.LoadInt32(&c.finishedMapTasks)
 }
 
@@ -113,9 +101,8 @@ func MakeCoordinator(nReduce int) *Coordinator {
 	c := Coordinator{}
 
 	// Your code here.
-	c.canReduce = sync.NewCond(&sync.Mutex{})
-	c.tasks = generateTasks(nReduce)
-	for _, task := range c.tasks {
+	tasks := generateTasks(nReduce)
+	for _, task := range tasks {
 		c.taskQueue.Push(task)
 		if task.Type == TaskTypeMap {
 			c.totalMapTasks++
@@ -125,4 +112,12 @@ func MakeCoordinator(nReduce int) *Coordinator {
 	go c.serve()
 
 	return &c
+}
+
+func (c *Coordinator) loadTaskMap(workerID string) (*Task, bool) {
+	task, ok := c.workerTaskMap.Load(workerID)
+	if !ok {
+		return nil, false
+	}
+	return task.(*Task), true
 }

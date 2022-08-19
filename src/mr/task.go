@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 var emptyTask Task
@@ -14,6 +15,7 @@ type Task struct {
 	Type     TaskType
 	FilePath string
 	NReduce  int
+	timer    *time.Timer
 }
 
 type TaskType string
