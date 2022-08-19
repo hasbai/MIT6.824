@@ -11,10 +11,10 @@ package mrapps
 import (
 	"6.824/models"
 	crand "crypto/rand"
+	"runtime"
 )
 import "math/big"
 import "strings"
-import "os"
 import "sort"
 import "strconv"
 import "time"
@@ -27,7 +27,7 @@ func maybeCrash() {
 	rr, _ := crand.Int(crand.Reader, max)
 	if rr.Int64() < 330 {
 		// crash!
-		os.Exit(1)
+		runtime.Goexit()
 	} else if rr.Int64() < 660 {
 		// delay for a while.
 		maxms := big.NewInt(10 * 1000)

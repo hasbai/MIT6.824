@@ -34,7 +34,7 @@ func (EarlyExit) Reduce(key string, values []string) string {
 	// some reduce tasks sleep for a long time; potentially seeing if
 	// a worker will accidentally exit early
 	if strings.Contains(key, "sherlock") || strings.Contains(key, "tom") {
-		time.Sleep(time.Duration(3 * time.Second))
+		time.Sleep(3 * time.Second)
 	}
 	// return the number of occurrences of this file.
 	return strconv.Itoa(len(values))

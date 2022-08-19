@@ -3,33 +3,25 @@ package mrapps
 //
 // same as crash.go but doesn't actually crash.
 //
-// go build -buildmode=plugin nocrash.go
+// go build -buildmode=plugin noCrash.go
 //
 
 import (
 	"6.824/models"
 )
-import crand "crypto/rand"
-import "math/big"
 import "strings"
-import "os"
 import "sort"
 import "strconv"
 
 type NoCrash struct {
 }
 
-func mayCrash() {
-	max := big.NewInt(1000)
-	rr, _ := crand.Int(crand.Reader, max)
-	if rr.Int64() < 500 {
-		// crash!
-		os.Exit(1)
-	}
+func noCrash() {
+	// no crash
 }
 
 func (NoCrash) Map(filename string, contents string) []models.KeyValue {
-	mayCrash()
+	noCrash()
 
 	var kva []models.KeyValue
 	kva = append(kva, models.KeyValue{Key: "a", Value: filename})
@@ -40,7 +32,7 @@ func (NoCrash) Map(filename string, contents string) []models.KeyValue {
 }
 
 func (NoCrash) Reduce(key string, values []string) string {
-	mayCrash()
+	noCrash()
 
 	// sort values to ensure deterministic output.
 	vv := make([]string, len(values))

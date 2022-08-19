@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 import "hash/fnv"
 
@@ -34,13 +35,25 @@ func Worker(mrAppName string) {
 	log.Printf("worker %s spawn, app %s", uid, mrAppName)
 	defer log.Printf("worker %s exit", uid)
 
-	task := getTask(uid)
-	for task != emptyTask {
+	for {
+		task := getTask(uid)
+		if task == emptyTask {
+			break
+		}
+		if task.Code == TaskCodeWait {
+			log.Printf("task %d needs waiting, sleep for a while...", task.ID)
+			time.Sleep(time.Second * 1)
+			continue
+		}
+
+		log.Printf("worker %s running task %d", uid, task.ID)
 		err := runTask(task, mrApp)
 		if err != nil {
-			log.Printf("worker run failed, %v", err)
+			log.Printf("task %d failed, %v", task.ID, err)
+			return
 		}
-		task = getTask(uid)
+
+		log.Printf("task %d finished", task.ID)
 	}
 	log.Printf("all done")
 }
@@ -52,12 +65,10 @@ func getTask(workerID string) Task {
 	if !ok {
 		log.Println("get task failed")
 	}
-	log.Println("get task ", task)
 	return task
 }
 
 func runTask(task Task, app MapReduce) error {
-	log.Println("run task ", task)
 	switch task.Type {
 	case TaskTypeMap:
 		return runMap(task, app.Map)
@@ -131,10 +142,10 @@ func runReduce(task Task, reduceFunc ReduceFunc) error {
 		}
 		_ = file.Close()
 
-		err = os.Remove(filename)
-		if err != nil {
-			return err
-		}
+		//err = os.Remove(filename)
+		//if err != nil {
+		//	return err
+		//}
 	}
 
 	sort.Sort(ByKey(kvs))

@@ -6,20 +6,29 @@ import (
 	"sync"
 )
 
+var emptyTask Task
+
 type Task struct {
 	ID       int
+	Code     TaskCode
 	Type     TaskType
 	FilePath string
 	NReduce  int
 }
-
-var emptyTask Task
 
 type TaskType string
 
 const (
 	TaskTypeMap    = "map"
 	TaskTypeReduce = "reduce"
+)
+
+type TaskCode int
+
+const (
+	TaskCodeExit TaskCode = iota
+	TaskCodeSuccess
+	TaskCodeWait
 )
 
 type Stack[T any] struct {

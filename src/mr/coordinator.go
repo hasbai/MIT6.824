@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -45,14 +46,18 @@ func (c *Coordinator) GetTask(args *GetTaskArgs, reply *Task) error {
 
 	*reply = task
 
-	if reply.Type == TaskTypeReduce {
-		c.canReduce.L.Lock()
-		for !c.allMapTasksDone() {
-			log.Printf("task %d is waiting", task.ID)
-			c.canReduce.Wait()
-		}
-		c.canReduce.L.Unlock()
-		c.canReduce.Broadcast()
+	if task.Type == TaskTypeReduce && !c.allMapTasksDone() {
+		reply.Code = TaskCodeWait
+		c.taskQueue.Push(task)
+		log.Printf("task %d is waiting", task.ID)
+		return nil
+		//c.canReduce.L.Lock()
+		//for !c.allMapTasksDone() {
+		//	log.Printf("task %d is waiting", task.ID)
+		//	c.canReduce.Wait()
+		//}
+		//c.canReduce.L.Unlock()
+		//c.canReduce.Broadcast()
 	}
 
 	c.workerTaskMap.Store(args.WorkerID, task.ID)
@@ -83,15 +88,21 @@ func (c *Coordinator) Done() bool {
 func (c *Coordinator) timeout(workerID string, taskID int) {
 	currentTaskID, ok := c.workerTaskMap.Load(workerID)
 	if !ok || currentTaskID != taskID { // task finished
-		log.Printf("task %d finished, skip...", taskID)
+		//log.Printf("task %d finished, skip...", taskID)
 		return
 	}
 	c.workerTaskMap.Delete(workerID)
 	c.taskQueue.Push(c.tasks[taskID])
 	log.Printf("task %d timeout, rescheduled", taskID)
+	fmt.Println(c.taskQueue.array)
+	c.workerTaskMap.Range(func(k, v any) bool {
+		fmt.Println(k, v)
+		return true
+	})
 }
 
 func (c *Coordinator) allMapTasksDone() bool {
+	log.Println(atomic.LoadInt32(&c.finishedMapTasks))
 	return c.totalMapTasks == atomic.LoadInt32(&c.finishedMapTasks)
 }
 

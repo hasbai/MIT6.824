@@ -59,7 +59,8 @@ func call(rpcName string, args any, reply any) bool {
 	socketName := coordinatorSock()
 	c, err := rpc.DialHTTP("unix", socketName)
 	if err != nil {
-		log.Fatal("dialing:", err)
+		log.Println("dialing:", err)
+		return false
 	}
 	//goland:noinspection GoUnhandledErrorResult
 	defer c.Close()
