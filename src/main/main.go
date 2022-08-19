@@ -7,13 +7,18 @@ import (
 	"time"
 )
 
+var mrAppName = "wc"
+
 func main() {
 	if len(os.Args) < 2 {
 		return
 	}
+	if len(os.Args) >= 3 {
+		mrAppName = os.Args[2]
+	}
 	switch os.Args[1] {
 	case "sequential":
-		mr.Sequential("wc")
+		mr.Sequential(mrAppName)
 	case "coordinator":
 		m := mr.MakeCoordinator(10)
 		for m.Done() == false {
@@ -25,7 +30,7 @@ func main() {
 		for i := 0; i < 3; i++ { // start multiple workers.
 			wg.Add(1)
 			go func() {
-				mr.Worker("wc")
+				mr.Worker(mrAppName)
 				wg.Done()
 			}()
 		}
